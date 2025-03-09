@@ -6,6 +6,7 @@ import random
 from math import radians, sin, cos, sqrt, atan2
 
 
+# loads city coordinates from a text input
 def load_cities_from_text(data):
     cities = []
     city_names = []
@@ -62,88 +63,96 @@ cities, city_names = load_cities_from_text(city_data)
 n_cities = len(cities)
 
 
+# function to find the Euclidean distance matrix between all cities
 def distance_matrix(cities):
     n = len(cities)
-    dist_matrix = np.zeros((n, n), dtype=np.float64)
+    dist_matrix = np.zeros((n, n), dtype=np.float64) # initialize empty distance matrix
     for i in range(n):
         for j in range(n):
-            dist_matrix[i, j] = np.linalg.norm(cities[i] - cities[j])
+            dist_matrix[i, j] = np.linalg.norm(cities[i] - cities[j]) # compute Euclidean distance
     return dist_matrix
 
 
 dist_matrix = distance_matrix(cities)
 
 # Parameters
-n_ants = 20
-n_iterations = 150
-alpha = 1
-beta = 2
-decay = 0.1
-Q = 100
+n_ants = 20  # Number of ants in each iteration
+n_iterations = 150  # Number of iterations
+alpha = 1  # Influence of pheromone trails
+beta = 2  # Influence of visibility (1/distance)
+decay = 0.1  # Pheromone evaporation rate
+Q = 100  # Pheromone deposit factor
 
-
+# initialize pheromone matrix with ones
 def init_pheromones(n):
     return np.ones((n, n))
 
 
 pheromones = init_pheromones(n_cities)
 
-
+# function to select the next city for an ant based on probabilities
 def select_next_city(ant, visited, pheromones, dist_matrix, alpha, beta):
     current_city = ant[-1]
     probabilities = []
 
+    # compute selection probabilities for !unvisited! cities
     for city in range(n_cities):
         if city not in visited:
-            pheromone = pheromones[current_city, city] ** alpha
+            pheromone = pheromones[current_city, city] ** alpha # pheromone influence
+
+            # visibility - inverse of distance (shorter distances are better)
             visibility = (1 / dist_matrix[current_city, city]) ** beta if dist_matrix[current_city, city] > 0 else 1e6
             probabilities.append((city, pheromone * visibility))
 
+    # normalize probabilities
     total = sum(prob for _, prob in probabilities)
-    if total == 0:
+    if total == 0: # if all probabilities are zero, select a random unvisited city
         return random.choice([city for city in range(n_cities) if city not in visited])
 
+    # select city based on probabilities
     probabilities = [(city, prob / total) for city, prob in probabilities]
     rand_val = random.uniform(0, 1)
     cumulative = 0
 
     for city, prob in probabilities:
         cumulative += prob
+        # select city when cumulative probability reaches random value
         if rand_val <= cumulative:
             return city
 
-    return probabilities[-1][0]
+    return probabilities[-1][0] # default to last city if no selection happens
 
-
+# function implementing ACO algorithm
 def main_op(n_ants, n_iterations, pheromones, dist_matrix, alpha, beta, decay, Q):
     best_tour = None
     best_length = float('inf')
 
     print("Initial pheromones matrix:")
     print(pheromones)  # Debug
-    convergence = []
+    convergence = [] # store best solution at each iteration - used for plot
 
     for iteration in range(n_iterations):
         all_tours = []
         all_lengths = []
 
-        for ant in range(n_ants):
-            start = random.randint(0, n_cities - 1)
+        for ant in range(n_ants): # loop through each ant
+            start = random.randint(0, n_cities - 1) # select a random starting city
             ant_tour = [start]
             visited = set(ant_tour)
 
+            # create a full tour (visiting each city once)
             while len(visited) < n_cities:
                 next_city = select_next_city(ant_tour, visited, pheromones, dist_matrix, alpha, beta)
                 ant_tour.append(next_city)
                 visited.add(next_city)
 
-            ant_tour.append(start)
-            tour_length = sum(dist_matrix[ant_tour[i], ant_tour[i + 1]] for i in range(n_cities))
+            ant_tour.append(start) # complete the tour
+            tour_length = sum(dist_matrix[ant_tour[i], ant_tour[i + 1]] for i in range(n_cities)) # calculate the total length of the tour
 
             all_tours.append(ant_tour)
             all_lengths.append(tour_length)
 
-        # Check if we found a new best solution
+        # check if we found a new best solution
         min_index = np.argmin(all_lengths)
         if all_lengths[min_index] < best_length:
             best_length = all_lengths[min_index]
@@ -154,13 +163,14 @@ def main_op(n_ants, n_iterations, pheromones, dist_matrix, alpha, beta, decay, Q
         if iteration % 10 == 0 or iteration == n_iterations - 1:  # Print every 10 iterations
             print(f"Iteration {iteration}: Best length so far = {best_length}")
 
-        pheromones *= (1 - decay)
+        pheromones *= (1 - decay) # pheromone evaporation
 
+        # update pheromones based on tours found in this iteration
         for tour, length in zip(all_tours, all_lengths):
             for i in range(n_cities):
                 city_a, city_b = tour[i], tour[i + 1]
-                pheromones[city_a, city_b] += Q / length
-                pheromones[city_b, city_a] += Q / length
+                pheromones[city_a, city_b] += Q / length # deposit pheromones inversely proportional to length
+                pheromones[city_b, city_a] += Q / length # ensure bidirectional update
 
     print("Final pheromones matrix:")
     print(pheromones)  # Debug
@@ -172,6 +182,7 @@ def main_op(n_ants, n_iterations, pheromones, dist_matrix, alpha, beta, decay, Q
 
 best_tour, best_length, convergence = main_op(n_ants, n_iterations, pheromones, dist_matrix, alpha, beta, decay, Q)
 
+# Haversine function
 def haversine(coord1, coord2):
     R = 6371  # Earth's radius in km
     lat1, lon1 = radians(coord1[0]), radians(coord1[1])
@@ -189,15 +200,16 @@ tour_length_km = sum(haversine(cities[best_tour[i]], cities[best_tour[i + 1]]) f
 print(f"Best tour length (km): {tour_length_km:.2f} km")
 
 
+# visualisation
 def plot_tour(cities, tour, city_names):
     plt.figure(figsize=(10, 6))
     plt.scatter(cities[:, 0], cities[:, 1], c='red', marker='o', label="Cities")
 
-    # Plot city names
+    # plot city names
     for i, city in enumerate(cities):
         plt.text(city[0] + 0.1, city[1] + 0.1, city_names[i], fontsize=9, color='blue')
 
-    # Draw path
+    # draw path
     for i in range(len(tour) - 1):
         city1, city2 = tour[i], tour[i + 1]
         plt.plot([cities[city1][0], cities[city2][0]], [cities[city1][1], cities[city2][1]], 'b-')
@@ -210,6 +222,7 @@ def plot_tour(cities, tour, city_names):
     plt.legend()
     plt.show()
 
+# convergence visualisation
 def plot_convergence(convergence, filename="convergence_plot.png"):
 
     plt.figure(figsize=(8, 5))
@@ -221,8 +234,8 @@ def plot_convergence(convergence, filename="convergence_plot.png"):
     plt.grid(True)
     plt.legend()
 
-    plt.savefig(filename)  # Save the figure
-    print(f"Convergence plot saved as {filename}")  # Confirmation message
+    plt.savefig(filename)  # save the figure
+    print(f"Convergence plot saved as {filename}")
     plt.show()
 
 plot_tour(cities, best_tour, city_names)
